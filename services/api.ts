@@ -1,103 +1,81 @@
-import { ScrapeResult, Profile, Course, Semester } from '../types';
-import { getSemesterOrderKey, calculateQualityPoints } from '../utils/gpa';
+// services/api.ts
+import { Profile, Semester, Course } from '../types';
+import { getSemesterOrderKey, calculateQualityPoints, BED_COURSES } from '../utils/gpa';
+
+// Note: On Vercel, Python files in /api/ are treated as serverless functions automatically.
+// Ensure your python file is at /api/index.py or /api/result-scraper.py
 
 export const fetchResults = async (regNum: string): Promise<Profile | null> => {
-  try {
-    const response = await fetch('/api/result-scraper?action=scrape_single', {
-      method: 'POST',
-      body: JSON.stringify({ registrationNumber: regNum }),
-      headers: { 'Content-Type': 'application/json' }
-    });
+  const response = await fetch(`/api/result-scraper?action=scrape_single&registrationNumber=${regNum}`);
+  const data = await response.json();
 
-    if (!response.ok) {
-      console.error("Server returned error:", response.status);
-      return null;
-    }
-
-    const data: ScrapeResult = await response.json();
-
-    if (data.success && data.resultData && data.resultData.length > 0) {
-      return transformScrapedData(data.resultData);
-    }
-    return null;
-  } catch (error) {
-    console.error("API Error:", error);
-    throw error;
+  if (data.success && data.resultData) {
+    return transformScrapedData(data.resultData);
   }
+  return null;
+};
+
+export const fetchAttendance = async (regNum: string) => {
+  const response = await fetch(`/api/result-scraper?action=scrape_attendance&registrationNumber=${regNum}`);
+  return await response.json();
 };
 
 const transformScrapedData = (rawData: any[]): Profile => {
-  // Use flexible key access for varying API responses
-  const getVal = (obj: any, keys: string[]) => {
-    for (const key of keys) {
-      if (obj[key] !== undefined) return obj[key];
-    }
-    return null;
-  };
-
-  const studentName = getVal(rawData[0], ['StudentName', 'Name', 'student_name']) || 'Unknown Student';
-  const registration = getVal(rawData[0], ['RegistrationNo', 'RegNo', 'registration_number']) || 'Unknown ID';
-
+  const studentName = rawData[0]?.StudentName || 'Unknown';
+  const registration = rawData[0]?.RegistrationNo || 'Unknown';
+  
   const semesters: Record<string, Semester> = {};
+  let hasBedCourses = false;
 
   rawData.forEach((item) => {
-    let semName = getVal(item, ['Semester', 'SemesterName', 'semester']) || 'Unknown';
+    let semName = item.Semester;
     
-    // Normalize semester names if needed
-    if (semName.match(/^\d{4}-\d{2}$/)) {
-      const parts = semName.split('-');
-      semName = `Semester ${parts[0]}-${parts[1]}`;
+    // Normalize logic
+    if (semName.toLowerCase().match(/^(winter|spring|summer|fall)(\d{2})$/)) {
+       // Convert "Spring24" to "Spring 2024" logic here if needed, 
+       // or rely on getSemesterOrderKey to handle it
     }
-    
+
     if (!semesters[semName]) {
       semesters[semName] = {
         originalName: semName,
         sortKey: getSemesterOrderKey(semName),
         courses: [],
-        gpa: 0,
-        percentage: 0,
-        totalCreditHours: 0,
-        totalMarksObtained: 0,
-        totalMaxMarks: 0,
-        totalQualityPoints: 0
+        gpa: 0, percentage: 0, totalQualityPoints: 0, totalCreditHours: 0, totalMarksObtained: 0, totalMaxMarks: 0
       };
     }
 
-    const chRaw = getVal(item, ['CreditHours', 'CH', 'credit_hours']) || '0';
-    const ch = parseInt(String(chRaw).match(/\d+/)?.[0] || '0');
-    const marks = parseFloat(String(getVal(item, ['Total', 'Marks', 'total_marks']) || '0'));
-    const grade = getVal(item, ['Grade', 'grade']) || '';
+    const ch = parseInt(item.CreditHours || '0');
+    const marks = parseFloat(item.Total || '0');
+    const code = (item.CourseCode || '').trim().toUpperCase();
 
-    const course: Course = {
-      code: getVal(item, ['CourseCode', 'Code', 'course_code']) || 'N/A',
-      title: getVal(item, ['CourseTitle', 'Title', 'course_title']) || '',
+    if (BED_COURSES.has(code)) hasBedCourses = true;
+
+    semesters[semName].courses.push({
+      code,
+      title: item.CourseTitle,
       creditHours: ch,
-      creditHoursDisplay: String(chRaw),
-      marks: marks,
-      grade: grade,
-      qualityPoints: calculateQualityPoints(marks, ch, grade),
+      marks,
+      grade: item.Grade,
+      qualityPoints: calculateQualityPoints(marks, ch, item.Grade),
+      teacher: item.TeacherName,
       isDeleted: false,
       isCustom: false,
       isExtraEnrolled: false,
       isRepeated: false,
-      teacher: getVal(item, ['TeacherName', 'Teacher']),
-      mid: String(getVal(item, ['Mid', 'mid_marks']) || ''),
-      assignment: String(getVal(item, ['Assignment', 'assignment_marks']) || ''),
-      final: String(getVal(item, ['Final', 'final_marks']) || ''),
-      practical: String(getVal(item, ['Practical', 'practical_marks']) || ''),
-      source: 'lms'
-    };
-
-    semesters[semName].courses.push(course);
+      source: 'lms',
+      mid: item.Mid,
+      final: item.Final
+    });
   });
 
   return {
-    id: `profile_${Date.now()}_${registration.replace(/[^a-zA-Z0-9]/g, '')}`,
+    id: `profile_${Date.now()}`,
     displayName: `${studentName} (${registration})`,
     studentInfo: { name: studentName, registration },
     semesters,
+    bedMode: hasBedCourses, // Auto-detect B.Ed
     courseHistory: {},
-    bedMode: false,
     createdAt: new Date().toISOString(),
     lastModified: new Date().toISOString()
   };
