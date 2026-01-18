@@ -1,3 +1,4 @@
+// types.ts
 export interface StudentInfo {
   name: string;
   registration: string;
@@ -12,16 +13,12 @@ export interface Course {
   qualityPoints: number;
   grade: string;
   teacher?: string;
-  mid?: string;
-  assignment?: string;
-  final?: string;
-  practical?: string;
   isExtraEnrolled: boolean;
   isRepeated: boolean;
   isDeleted: boolean;
   isCustom: boolean;
-  originalSemester?: string;
   source?: 'lms' | 'attendance';
+  originalSemester?: string;
 }
 
 export interface Semester {
@@ -35,6 +32,7 @@ export interface Semester {
   totalMarksObtained: number;
   totalMaxMarks: number;
   isForecast?: boolean;
+  hasBedCourses?: boolean;
 }
 
 export interface Profile {
@@ -42,16 +40,9 @@ export interface Profile {
   displayName: string;
   studentInfo: StudentInfo;
   semesters: Record<string, Semester>;
-  courseHistory: Record<string, any>; // Simplified for internal logic
   bedMode: boolean;
   createdAt: string;
   lastModified: string;
-}
-
-export interface ScrapeResult {
-  success: boolean;
-  message: string;
-  resultData?: any[];
 }
 
 export interface CgpaSummary {
