@@ -1,138 +1,127 @@
 import { Course, Semester, Profile, CgpaSummary } from '../types';
 
+/**
+ * Calculates Quality Points based on UAF's grading policy.
+ * UAF follows a linear grading system for various percentage brackets.
+ */
 export const calculateQualityPoints = (marks: number, creditHours: number, grade: string): number => {
   const g = (grade || '').trim().toUpperCase();
+  
   if (g === 'P') return creditHours * 4.0;
   if (g === 'F') return 0;
 
-  let qp = 0;
+  const totalMarks = creditHours * 20;
+  if (totalMarks === 0) return 0;
   
-  // Logic ported from original JS
-  if (creditHours === 10) {
-      if (marks >= 160) qp = 40;
-      else if (marks >= 100) qp = 40 - ((160 - marks) * 0.33333);
-      else if (marks < 100) qp = 20 - ((100 - marks) * 0.5);
-      if (marks < 80) qp = 0;
-  } else if (creditHours === 4) {
-      if (marks >= 64) qp = 16;
-      else if (marks >= 40) qp = 16 - ((64 - marks) * 0.33333);
-      else if (marks < 40) qp = 8 - ((40 - marks) * 0.5);
-      if (marks < 32) qp = 0;
-  } else if (creditHours === 3) {
-      if (marks >= 48) qp = 12;
-      else if (marks >= 30) qp = 12 - ((48 - marks) * 0.33333);
-      else if (marks < 30) qp = 6 - ((30 - marks) * 0.5);
-      if (marks < 24) qp = 0;
-  } else if (creditHours === 2) {
-      if (marks >= 32) qp = 8;
-      else if (marks >= 20) qp = 8 - ((32 - marks) * 0.33333);
-      else if (marks < 20) qp = 4 - ((20 - marks) * 0.5);
-      if (marks < 16) qp = 0;
-  } else if (creditHours === 1) {
-      if (marks >= 16) qp = 4;
-      else if (marks >= 10) qp = 4 - ((16 - marks) * 0.33333);
-      else if (marks < 10) qp = 2 - ((10 - marks) * 0.5);
-      if (marks < 8) qp = 0;
+  const percentage = (marks / totalMarks) * 100;
+
+  let gpa = 0;
+  if (percentage >= 80) {
+    gpa = 4.0;
+  } else if (percentage >= 65) {
+    gpa = 3.0 + ((percentage - 65) * (1.0 / 15.0));
+  } else if (percentage >= 50) {
+    gpa = 2.0 + ((percentage - 50) * (1.0 / 15.0));
+  } else if (percentage >= 40) {
+    gpa = 1.0 + ((percentage - 40) * (1.0 / 10.0));
+  } else {
+    gpa = 0.0;
   }
-  
-  // Fallback linear logic for other CH (simplified from original lengthy switch)
-  // Note: For strict adherence to original, we'd add all cases. 
-  // For brevity in this refactor, relying on common CHs.
-  
-  return parseFloat(Math.max(0, qp).toFixed(2));
+
+  return parseFloat((gpa * creditHours).toFixed(4));
 };
 
+/**
+ * Sort key generator for semesters to ensure chronological ordering.
+ */
+export const getSemesterOrderKey = (name: string): string => {
+  const n = (name || '').toLowerCase();
+  let year = 0;
+  const yearMatch = n.match(/\d{4}/);
+  if (yearMatch) year = parseInt(yearMatch[0]);
+
+  let seasonWeight = 0;
+  if (n.includes('spring')) seasonWeight = 1;
+  else if (n.includes('summer')) seasonWeight = 2;
+  else if (n.includes('winter')) seasonWeight = 3;
+  else if (n.includes('fall')) seasonWeight = 4;
+
+  const numMatch = n.match(/(\d+)(st|nd|rd|th)/);
+  if (numMatch) seasonWeight = parseInt(numMatch[1]);
+
+  return `${year}-${seasonWeight.toString().padStart(2, '0')}`;
+};
+
+/**
+ * Calculates Semester GPA and updates the semester object.
+ */
+export const calculateSemesterStats = (semester: Semester): void => {
+  let totalQP = 0;
+  let totalCH = 0;
+  let totalMarks = 0;
+  let totalMax = 0;
+
+  semester.courses.forEach(course => {
+    if (course.isDeleted) return;
+    
+    const qp = calculateQualityPoints(course.marks, course.creditHours, course.grade);
+    course.qualityPoints = qp;
+
+    totalQP += qp;
+    totalCH += course.creditHours;
+    totalMarks += course.marks;
+    totalMax += (course.creditHours * 20);
+  });
+
+  semester.totalQualityPoints = totalQP;
+  semester.totalCreditHours = totalCH;
+  semester.totalMarksObtained = totalMarks;
+  semester.totalMaxMarks = totalMax;
+  semester.gpa = totalCH > 0 ? parseFloat((totalQP / totalCH).toFixed(4)) : 0;
+  semester.percentage = totalMax > 0 ? parseFloat(((totalMarks / totalMax) * 100).toFixed(2)) : 0;
+};
+
+/**
+ * Calculates overall CGPA across all semesters in a profile.
+ * Handles repeated courses by only counting the latest occurrence.
+ */
 export const calculateCGPA = (profile: Profile): CgpaSummary => {
-  let totalQualityPoints = 0;
-  let totalCreditHours = 0;
-  let totalMarksObtained = 0;
-  let totalMaxMarks = 0;
+  if (!profile || !profile.semesters) {
+    return { cgpa: 0, percentage: 0, totalQualityPoints: 0, totalCreditHours: 0, totalMarksObtained: 0, totalMaxMarks: 0 };
+  }
 
-  // Flatten courses to handle repeats correctly
-  const courseHistory: Record<string, { marks: number; course: Course }[]> = {};
+  const sortedSemesters = Object.values(profile.semesters).sort((a, b) => 
+    (a.sortKey || '').localeCompare(b.sortKey || '')
+  );
 
-  Object.values(profile.semesters).forEach((sem) => {
-    sem.courses.forEach((course) => {
+  const courseMap = new Map<string, Course>();
+  
+  sortedSemesters.forEach(sem => {
+    calculateSemesterStats(sem);
+    sem.courses.forEach(course => {
       if (course.isDeleted) return;
-      const key = course.code.toUpperCase().trim();
-      if (!courseHistory[key]) courseHistory[key] = [];
-      courseHistory[key].push({ marks: course.marks, course });
+      courseMap.set(course.code, course);
     });
   });
 
-  // Mark repeats
-  Object.values(courseHistory).forEach((attempts) => {
-    if (attempts.length > 1) {
-      attempts.sort((a, b) => b.marks - a.marks); // Highest marks first
-      attempts.forEach((item, index) => {
-        item.course.isRepeated = true;
-        item.course.isExtraEnrolled = index > 0; // Only first (highest) counts
-      });
-    } else {
-      attempts[0].course.isRepeated = false;
-      attempts[0].course.isExtraEnrolled = false;
-    }
-  });
+  let totalQP = 0;
+  let totalCH = 0;
+  let totalMarks = 0;
+  let totalMax = 0;
 
-  // Calculate Totals
-  Object.values(profile.semesters).forEach((sem) => {
-    let semQP = 0;
-    let semCH = 0;
-    let semMarks = 0;
-    let semMax = 0;
-
-    sem.courses.forEach((c) => {
-      if (!c.isExtraEnrolled && !c.isDeleted) {
-        semQP += c.qualityPoints;
-        semCH += c.creditHours;
-        semMarks += c.marks;
-        
-        // Approx Max Marks based on CH (Original logic)
-        let max = 0;
-        if (c.creditHours === 4) max = 80;
-        else if (c.creditHours === 3) max = 60;
-        else if (c.creditHours === 2) max = 40;
-        else if (c.creditHours === 1) max = 20;
-        // ... add others if needed
-        semMax += max;
-      }
-    });
-
-    sem.totalQualityPoints = semQP;
-    sem.totalCreditHours = semCH;
-    sem.totalMarksObtained = semMarks;
-    sem.totalMaxMarks = semMax;
-    sem.gpa = semCH > 0 ? semQP / semCH : 0;
-    sem.percentage = semMax > 0 ? (semMarks / semMax) * 100 : 0;
-
-    totalQualityPoints += semQP;
-    totalCreditHours += semCH;
-    totalMarksObtained += semMarks;
-    totalMaxMarks += semMax;
+  courseMap.forEach(course => {
+    totalQP += course.qualityPoints;
+    totalCH += course.creditHours;
+    totalMarks += course.marks;
+    totalMax += (course.creditHours * 20);
   });
 
   return {
-    cgpa: totalCreditHours > 0 ? totalQualityPoints / totalCreditHours : 0,
-    percentage: totalMaxMarks > 0 ? (totalMarksObtained / totalMaxMarks) * 100 : 0,
-    totalQualityPoints,
-    totalCreditHours,
-    totalMarksObtained,
-    totalMaxMarks
+    cgpa: totalCH > 0 ? parseFloat((totalQP / totalCH).toFixed(4)) : 0,
+    percentage: totalMax > 0 ? parseFloat(((totalMarks / totalMax) * 100).toFixed(2)) : 0,
+    totalQualityPoints: totalQP,
+    totalCreditHours: totalCH,
+    totalMarksObtained: totalMarks,
+    totalMaxMarks: totalMax
   };
-};
-
-export const getSemesterOrderKey = (semesterName: string): string => {
-    const s = semesterName.toLowerCase();
-    if (s.startsWith('forecast')) return `3000-${s.split(' ')[1]}`;
-    
-    const yearMatch = s.match(/\b(\d{4})\b/);
-    const year = yearMatch ? parseInt(yearMatch[1]) : 9999;
-    
-    let season = 9;
-    if (s.includes('winter')) season = 1;
-    else if (s.includes('spring')) season = 2;
-    else if (s.includes('summer')) season = 3;
-    else if (s.includes('fall')) season = 4;
-
-    return `${year}-${season}`;
 };

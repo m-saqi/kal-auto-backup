@@ -7,19 +7,20 @@ interface CgpaDialProps {
 
 export const CgpaDial: React.FC<CgpaDialProps> = ({ summary }) => {
   // SVG Circle Calc
-  const radius = 50;
-  const stroke = 8;
+  const radius = 45; // Reduced radius for better mobile fit
+  const stroke = 6;
   const normalizedRadius = radius - stroke * 2;
   const circumference = normalizedRadius * 2 * Math.PI;
   const strokeDashoffset = circumference - ((summary.percentage / 100) * circumference);
 
   return (
-    <div className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-700">
-      <div className="relative w-48 h-48 flex items-center justify-center">
+    <div className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+      <div className="relative w-36 h-36 md:w-44 md:h-44 flex items-center justify-center">
         <svg
-          height={radius * 2}
-          width={radius * 2}
-          className="transform -rotate-90 w-full h-full drop-shadow-lg"
+          height="100%"
+          width="100%"
+          viewBox={`0 0 ${radius * 2} ${radius * 2}`}
+          className="transform -rotate-90 drop-shadow-sm"
         >
           <circle
             stroke="currentColor"
@@ -44,27 +45,27 @@ export const CgpaDial: React.FC<CgpaDialProps> = ({ summary }) => {
           />
         </svg>
         <div className="absolute flex flex-col items-center">
-          <span className="text-4xl font-bold text-slate-900 dark:text-white">
+          <span className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white">
             {summary.cgpa.toFixed(4)}
           </span>
-          <span className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold mt-1">
+          <span className="text-[10px] uppercase tracking-widest text-slate-400 font-black mt-0.5">
             CGPA
           </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 mt-8 w-full text-center divide-x divide-slate-200 dark:divide-slate-700">
+      <div className="grid grid-cols-3 gap-4 mt-8 w-full text-center divide-x divide-slate-100 dark:divide-slate-700">
         <div>
-          <p className="text-slate-500 dark:text-slate-400 text-xs uppercase mb-1">Percentage</p>
-          <p className="text-lg font-bold text-slate-800 dark:text-slate-200">{summary.percentage.toFixed(2)}%</p>
+          <p className="text-slate-400 text-[9px] uppercase font-black mb-1">Percentage</p>
+          <p className="text-sm md:text-base font-black text-slate-800 dark:text-slate-200">{summary.percentage.toFixed(2)}%</p>
         </div>
         <div>
-           <p className="text-slate-500 dark:text-slate-400 text-xs uppercase mb-1">Credits</p>
-           <p className="text-lg font-bold text-slate-800 dark:text-slate-200">{summary.totalCreditHours}</p>
+           <p className="text-slate-400 text-[9px] uppercase font-black mb-1">Credits</p>
+           <p className="text-sm md:text-base font-black text-slate-800 dark:text-slate-200">{summary.totalCreditHours}</p>
         </div>
         <div>
-           <p className="text-slate-500 dark:text-slate-400 text-xs uppercase mb-1">Marks</p>
-           <p className="text-lg font-bold text-slate-800 dark:text-slate-200">{summary.totalMarksObtained.toFixed(0)}</p>
+           <p className="text-slate-400 text-[9px] uppercase font-black mb-1">Marks</p>
+           <p className="text-sm md:text-base font-black text-slate-800 dark:text-slate-200">{summary.totalMarksObtained.toFixed(0)}</p>
         </div>
       </div>
     </div>
