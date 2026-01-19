@@ -1,47 +1,84 @@
-/** @type {import('tailwindcss').Config} */
-export default {
-  content: [
-    "./index.html",
-    "./*.{js,ts,jsx,tsx}",
-    "./pages/**/*.{js,ts,jsx,tsx}",
-    "./components/**/*.{js,ts,jsx,tsx}",
-    "./context/**/*.{js,ts,jsx,tsx}",
-  ],
-  darkMode: 'class',
-  theme: {
-    extend: {
-      fontFamily: {
-        sans: ['Poppins', 'system-ui', 'sans-serif'],
-      },
-      colors: {
-        brand: {
-          50: '#f5f3ff',
-          100: '#ede9fe',
-          200: '#ddd6fe',
-          300: '#c4b5fd',
-          400: '#a78bfa',
-          500: '#8b5cf6',
-          600: '#7c3aed',
-          700: '#6d28d9',
-          800: '#5b21b6',
-          900: '#4c1d95',
-        }
-      },
-      animation: {
-        'fade-in': 'fadeIn 0.7s ease-out forwards',
-        'slide-up': 'slideUp 0.7s ease-out forwards',
-      },
-      keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        slideUp: {
-          '0%': { transform: 'translateY(20px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
-        }
-      }
-    },
-  },
-  plugins: [],
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Profile } from '../types';
+import { calculateCGPA } from '../utils/gpa';
+
+interface AppContextType {
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
+  activeProfile: Profile | null;
+  setActiveProfile: (profile: Profile | null) => void;
+  savedProfiles: Record<string, Profile>;
+  saveProfile: (profile: Profile) => void;
+  deleteProfile: (id: string) => void;
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
 }
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
+  const [savedProfiles, setSavedProfiles] = useState<Record<string, Profile>>({});
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Load theme and profiles from local storage
+  useEffect(() => {
+    const storedTheme = localStorage.getItem('uaf-theme') as 'light' | 'dark';
+    if (storedTheme) setTheme(storedTheme);
+    else if (window.matchMedia('(prefers-color-scheme: dark)').matches) setTheme('dark');
+
+    const storedProfiles = localStorage.getItem('uafCalculatorProfiles_v2');
+    if (storedProfiles) {
+      setSavedProfiles(JSON.parse(storedProfiles));
+    }
+  }, []);
+
+  // Update DOM class for theme
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('uaf-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
+  const saveProfile = (profile: Profile) => {
+    // Re-calculate stats before saving to ensure consistency
+    calculateCGPA(profile); 
+    const updatedProfiles = { ...savedProfiles, [profile.id]: profile };
+    setSavedProfiles(updatedProfiles);
+    setActiveProfile(profile);
+    localStorage.setItem('uafCalculatorProfiles_v2', JSON.stringify(updatedProfiles));
+  };
+
+  const deleteProfile = (id: string) => {
+    const updated = { ...savedProfiles };
+    delete updated[id];
+    setSavedProfiles(updated);
+    localStorage.setItem('uafCalculatorProfiles_v2', JSON.stringify(updated));
+    if (activeProfile?.id === id) setActiveProfile(null);
+  };
+
+  return (
+    <AppContext.Provider value={{
+      theme, toggleTheme,
+      activeProfile, setActiveProfile,
+      savedProfiles, saveProfile, deleteProfile,
+      isLoading, setIsLoading
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (context === undefined) throw new Error('useApp must be used within an AppProvider');
+  return context;
+};
