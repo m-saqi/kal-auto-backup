@@ -2,13 +2,16 @@
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
+    "./*.{js,ts,jsx,tsx}",           // Matches App.tsx, index.tsx in root
+    "./pages/**/*.{js,ts,jsx,tsx}",      // Matches files in pages folder
+    "./components/**/*.{js,ts,jsx,tsx}", // Matches files in components folder
+    "./context/**/*.{js,ts,jsx,tsx}",    // Matches files in context folder
   ],
   theme: {
     extend: {
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
-        serif: ['Merriweather', 'serif'], // New Academic Font
+        serif: ['Merriweather', 'serif'],
       },
       colors: {
         brand: {
