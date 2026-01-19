@@ -3,69 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>UAF CGPA Calculator - Official Linear Grading Tool & Result Fetcher</title>
-    <meta name="description" content="Calculate your UAF CGPA with 100% accuracy using the official linear grading system. Fetch results automatically from LMS, forecast future grades, and export professional PDF transcripts." />
-    <meta name="keywords" content="UAF, CGPA Calculator, University of Agriculture Faisalabad, UAF LMS Result, GPA Tool, Linear Grading UAF, Academic Record" />
-    <meta name="author" content="M Saqlain" />
-    
-    <!-- Open Graph / Facebook -->
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://uaf-cgpa.netlify.app/" />
-    <meta property="og:title" content="UAF CGPA Calculator - Official Linear Grading Tool" />
-    <meta property="og:description" content="The smartest way to track your academic progress at UAF. Instant result fetching and precise calculation." />
-    <meta property="og:image" content="https://uaf-cgpa.netlify.app/og-image.png" />
-
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:title" content="UAF CGPA Calculator" />
-    <meta property="twitter:description" content="Calculate UAF CGPA with 100% accuracy. Built for students, by students." />
-
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              brand: {
-                50: '#f5f3ff',
-                100: '#ede9fe',
-                200: '#ddd6fe',
-                300: '#c4b5fd',
-                400: '#a78bfa',
-                500: '#8b5cf6',
-                600: '#7c3aed',
-                700: '#6d28d9',
-                800: '#5b21b6',
-                900: '#4c1d95',
-              }
-            },
-            fontFamily: {
-              sans: ['Poppins', 'system-ui', 'sans-serif'],
-            }
-          }
-        }
-      }
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.2.0",
-    "react/": "https://esm.sh/react@18.2.0/",
-    "react-dom": "https://esm.sh/react-dom@18.2.0",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "react-router-dom": "https://esm.sh/react-router-dom@6.28.0?deps=react@18.2.0,react-dom@18.2.0",
-    "lucide-react": "https://esm.sh/lucide-react@0.344.0?deps=react@18.2.0",
-    "recharts": "https://esm.sh/recharts@2.12.1?deps=react@18.2.0,react-dom@18.2.0",
-    "jspdf": "https://esm.sh/jspdf@2.5.1",
-    "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.8.2",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
-  }
-}
-</script>
+    <title>UAF CGPA Calculator</title>
   </head>
-  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
+  <body>
     <div id="root"></div>
+    <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>
