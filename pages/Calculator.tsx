@@ -1,253 +1,270 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { calculateCGPA } from '../utils/gpa';
+import { calculateCGPA, getSemesterOrderKey } from '../utils/gpa';
 import { CgpaDial } from '../components/calculator/CgpaDial';
 import { SemesterList } from '../components/calculator/SemesterList';
 import { Button } from '../components/ui/Button';
+import { useNavigate } from 'react-router-dom';
 import { 
-  Download, Search, Loader2, RefreshCcw, Lock, PlusCircle, Activity 
+  Plus, Download, LineChart, Search, Loader2, ArrowLeft, 
+  History, Settings2, Sparkles, RefreshCcw, TrendingUp 
 } from 'lucide-react';
-import { fetchResults } from '../services/api';
+import { 
+  LineChart as RechartsLine, Line, XAxis, YAxis, Tooltip, 
+  ResponsiveContainer, CartesianGrid 
+} from 'recharts';
 import { jsPDF } from 'jspdf';
-
-const RESTRICTED_MAP: Record<string, string> = {
-    '2020-ag-9423': 'am9rZXI5MTE=', 
-    '2019-ag-8136': 'bWlzczkxMQ=='
-};
-
-const BED_COURSES = new Set(['EDU-501', 'EDU-502', 'EDU-601', 'EDU-401', 'EDU-402', 'EDU-301', 'EDU-302']); 
+import autoTable from 'jspdf-autotable';
+import { Semester } from '../types';
+import { fetchResults } from '../services/api';
 
 export const Calculator = () => {
-  const { activeProfile, saveProfile, setActiveProfile, isLoading, setIsLoading } = useApp();
+  const { activeProfile, setActiveProfile, saveProfile, isLoading, setIsLoading } = useApp();
+  const navigate = useNavigate();
+  const [showChart, setShowChart] = useState(false);
   const [regNum, setRegNum] = useState('');
-  const [passKey, setPassKey] = useState('');
-  const [showPassModal, setShowPassModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'normal' | 'bed'>('normal');
-  const [status, setStatus] = useState({ lms: 'checking', att: 'checking' });
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    // Check Status on Load
-    fetch('/api/result-scraper?action=check_status')
-      .then(res => res.json())
-      .then(data => {
-         if(data.success) setStatus({ lms: data.lms_status, att: data.attnd_status });
-         else setStatus({ lms: 'online', att: 'online' });
-      })
-      .catch(() => setStatus({ lms: 'offline', att: 'offline' }));
-  }, []);
-
-  const handleSearch = (e: React.FormEvent) => {
-      e.preventDefault();
-      const id = regNum.toLowerCase().trim();
-      if(RESTRICTED_MAP[id]) setShowPassModal(true);
-      else performFetch(id);
-  };
-
-  const verifyPassKey = () => {
-      const id = regNum.toLowerCase().trim();
-      if(btoa(passKey) === RESTRICTED_MAP[id]) {
-          setShowPassModal(false);
-          performFetch(id);
-      } else {
-          alert("Invalid Pass Key");
-      }
-  };
-
-  const performFetch = async (id: string) => {
+  const handleFetch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regNum.trim()) return;
     setIsLoading(true);
+    setError('');
     try {
-        const profile = await fetchResults(id);
-        if(profile) {
-            const hasBed = Object.values(profile.semesters).some(s => 
-                s.courses.some(c => BED_COURSES.has(c.code))
-            );
-            if(hasBed) {
-                profile.bedMode = true;
-                setActiveTab('normal');
-            }
-            saveProfile(profile);
-        } else {
-            alert("No result found. Please check AG Number.");
-        }
-    } catch(e) {
-        alert("Error connecting to LMS. The server might be down.");
+      const profile = await fetchResults(regNum);
+      if (profile) {
+        saveProfile(profile);
+        setRegNum('');
+      } else {
+        setError('Record not found. Use format: 2021-ag-1234');
+      }
+    } catch (err) {
+      setError('UAF LMS Connection Failed. Please try again.');
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const handleDownloadPDF = () => {
-     if(!activeProfile) return;
-     const form = document.createElement('form');
-     form.method = 'POST';
-     form.action = '/api/download'; 
-     form.style.display = 'none';
-
-     const doc = new jsPDF();
-     doc.setFontSize(18);
-     doc.text(`Transcript: ${activeProfile.studentInfo.name}`, 14, 20);
-     doc.setFontSize(12);
-     doc.text(`Reg No: ${activeProfile.studentInfo.registration}`, 14, 30);
-     
-     let yPos = 40;
-     const semesters = Object.values(activeProfile.semesters).sort((a,b) => a.sortKey.localeCompare(b.sortKey));
-
-     semesters.forEach(sem => {
-         if(yPos > 270) { doc.addPage(); yPos = 20; }
-         doc.setFont("helvetica", "bold");
-         doc.text(`${sem.originalName} (GPA: ${sem.gpa.toFixed(2)})`, 14, yPos);
-         yPos += 7;
-         sem.courses.forEach(c => {
-             doc.setFont("helvetica", "normal");
-             doc.text(`${c.code} - ${c.title.substring(0,30)} - ${c.grade} (${c.marks})`, 14, yPos);
-             yPos += 6;
-         });
-         yPos += 8;
-     });
-
-     const pdfBlob = doc.output('blob');
-     const reader = new FileReader();
-     reader.readAsDataURL(pdfBlob);
-     reader.onloadend = () => {
-         const inputName = document.createElement('input');
-         inputName.name = 'filename';
-         inputName.value = `Transcript_${activeProfile.studentInfo.registration}.pdf`;
-         const inputData = document.createElement('input');
-         inputData.name = 'fileData';
-         inputData.value = reader.result as string;
-         form.appendChild(inputName);
-         form.appendChild(inputData);
-         document.body.appendChild(form);
-         form.submit();
-         document.body.removeChild(form);
-     };
+  const handleAddForecast = () => {
+    if (!activeProfile) return;
+    const newProfile = { ...activeProfile };
+    let count = 1;
+    while(newProfile.semesters[`Forecast ${count}`]) count++;
+    const name = `Forecast ${count}`;
+    
+    newProfile.semesters[name] = {
+        originalName: name,
+        sortKey: getSemesterOrderKey(name),
+        courses: [],
+        gpa: 0, percentage: 0, totalCreditHours: 0, totalMarksObtained: 0, totalMaxMarks: 0, totalQualityPoints: 0,
+        isForecast: true
+    };
+    saveProfile(newProfile);
   };
 
+  const handleExportPDF = () => {
+    if (!activeProfile) return;
+    const summary = calculateCGPA(activeProfile);
+    const doc = new jsPDF();
+    
+    doc.setFillColor(124, 58, 237); // Brand Purple
+    doc.rect(0, 0, 210, 15, 'F');
+    doc.setFontSize(20);
+    doc.setTextColor(124, 58, 237);
+    doc.text("Official Academic Transcript", 14, 30);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(150);
+    doc.text(`Student: ${activeProfile.studentInfo.name}`, 14, 45);
+    doc.text(`Registration: ${activeProfile.studentInfo.registration}`, 14, 51);
+    doc.text(`CGPA: ${summary.cgpa.toFixed(4)}`, 14, 57);
+
+    let finalY = 70;
+    (Object.values(activeProfile.semesters) as Semester[])
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .forEach(sem => {
+        if(finalY > 260) { doc.addPage(); finalY = 20; }
+        doc.setFontSize(12);
+        doc.setTextColor(50);
+        doc.text(sem.originalName, 14, finalY);
+        
+        const tableBody = sem.courses.map(c => [c.code, c.title, c.creditHours, c.marks, c.grade]);
+        autoTable(doc, {
+            startY: finalY + 3,
+            head: [['Code', 'Course Title', 'CH', 'Marks', 'Grade']],
+            body: tableBody,
+            theme: 'grid',
+            headStyles: { fillColor: [124, 58, 237], fontSize: 9 },
+            styles: { fontSize: 8 },
+            margin: { left: 14, right: 14 }
+        });
+        finalY = (doc as any).lastAutoTable.finalY + 12;
+      });
+
+    doc.save(`${activeProfile.studentInfo.registration}_Transcript.pdf`);
+  };
+
+  // SEARCH VIEW (When no profile is active)
   if (!activeProfile) {
-     return (
-        <div className="min-h-[70vh] flex flex-col items-center justify-center p-4 dark:text-white transition-colors duration-300">
-             {showPassModal && (
-                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-                     <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in">
-                         <h3 className="text-xl font-bold mb-4 flex items-center text-red-600"><Lock className="mr-2"/> Restricted Access</h3>
-                         <input type="password" value={passKey} onChange={e => setPassKey(e.target.value)} 
-                                className="w-full border-2 dark:border-slate-600 dark:bg-slate-700 p-3 rounded-lg mb-4 text-slate-900 dark:text-white" placeholder="Enter Pass Key" autoFocus />
-                         <Button onClick={verifyPassKey} className="w-full">Unlock</Button>
-                     </div>
-                 </div>
-             )}
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 pt-20 pb-24 bg-slate-50 dark:bg-slate-950">
+        <div className="max-w-xl w-full text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="w-16 h-16 md:w-20 md:h-20 bg-brand-600 rounded-[2rem] flex items-center justify-center mx-auto text-white shadow-2xl rotate-3">
+            <Search size={32} />
+          </div>
+          
+          <div className="space-y-3">
+            <h1 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">Academic Workspace</h1>
+            <p className="text-[13px] md:text-base text-slate-500 dark:text-slate-400 font-medium leading-relaxed max-w-md mx-auto">
+              Ready to sync? Enter your registration number to retrieve your verified record from the UAF LMS server.
+            </p>
+          </div>
+          
+          <form onSubmit={handleFetch} className="relative w-full">
+            <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 p-2 rounded-[1.5rem] md:rounded-[2.5rem] shadow-xl focus-within:border-brand-500 transition-all">
+              <input
+                type="text"
+                placeholder="e.g. 2021-ag-1234"
+                value={regNum}
+                onChange={(e) => setRegNum(e.target.value)}
+                className="w-full bg-transparent border-none outline-none px-5 py-3 md:py-4 text-base md:text-xl font-black text-slate-900 dark:text-white placeholder-slate-300"
+              />
+              <Button type="submit" disabled={isLoading || !regNum} className="px-10 py-3 md:py-4 rounded-[1.25rem] md:rounded-[1.75rem] text-sm md:text-base font-black shrink-0 shadow-lg">
+                {isLoading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Fetch Record'}
+              </Button>
+            </div>
+            {error && <p className="mt-4 text-red-500 font-bold text-xs bg-red-50 dark:bg-red-900/10 inline-block px-4 py-1.5 rounded-full">{error}</p>}
+          </form>
 
-             <div className="w-full max-w-lg space-y-10 text-center">
-                 <div className="space-y-4">
-                    <h1 className="text-4xl md:text-5xl font-serif font-black text-slate-800 dark:text-white">Check Result</h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-lg">Enter your AG Number to fetch complete transcript</p>
-                 </div>
-                 
-                 <form onSubmit={handleSearch} className="relative group">
-                     <div className="absolute -inset-1 bg-gradient-to-r from-brand-400 to-blue-500 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-                     <div className="relative flex shadow-xl bg-white dark:bg-slate-800 rounded-full p-2 items-center border border-slate-100 dark:border-slate-700">
-                        <input value={regNum} onChange={e => setRegNum(e.target.value)} 
-                                className="w-full p-4 text-xl font-bold text-slate-700 dark:text-white bg-transparent outline-none placeholder:text-slate-300 dark:placeholder:text-slate-600 text-center font-mono"
-                                placeholder="2020-ag-1234" />
-                        <Button type="submit" size="lg" className="rounded-full px-8 h-12" disabled={isLoading}>
-                            {isLoading ? <Loader2 className="animate-spin w-6 h-6"/> : <Search className="w-6 h-6"/>}
-                        </Button>
-                     </div>
-                 </form>
-
-                 <div className="flex justify-center gap-6 text-sm font-medium">
-                    <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${status.lms==='online'?'bg-green-500 animate-pulse':'bg-red-500'}`}></div>
-                        <span className="text-slate-500 dark:text-slate-400">LMS Server</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${status.att==='online'?'bg-green-500 animate-pulse':'bg-red-500'}`}></div>
-                        <span className="text-slate-500 dark:text-slate-400">Attendance</span>
-                    </div>
-                 </div>
-             </div>
+          <div className="flex justify-center gap-3 pt-6">
+             <Button variant="ghost" size="sm" onClick={() => navigate('/profiles')} className="text-slate-400 hover:text-brand-600 font-bold px-6 py-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+               <History className="w-4 h-4 mr-2" /> View Saved Profiles
+             </Button>
+          </div>
         </div>
-     );
+      </div>
+    );
   }
 
-  const filteredSemesters = activeProfile.bedMode 
-     ? Object.values(activeProfile.semesters).map(s => ({
-         ...s,
-         courses: s.courses.filter(c => activeTab === 'bed' ? BED_COURSES.has(c.code) : !BED_COURSES.has(c.code))
-     })).filter(s => s.courses.length > 0)
-     : Object.values(activeProfile.semesters);
-
-  const displayProfile = { ...activeProfile, semesters: {} as any };
-  filteredSemesters.forEach(s => displayProfile.semesters[s.originalName] = s);
-  const summary = calculateCGPA(displayProfile);
+  // ACTIVE DASHBOARD VIEW
+  const summary = calculateCGPA(activeProfile);
+  const chartData = (Object.values(activeProfile.semesters) as Semester[])
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    .map(sem => ({
+      name: sem.originalName.replace('Semester', '').trim(),
+      gpa: sem.gpa
+    }));
 
   return (
-    <div className="max-w-7xl mx-auto p-4 space-y-8 animate-slide-up pb-24">
-        {/* Header */}
-        <div className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col md:flex-row justify-between items-center gap-6 transition-colors duration-300">
-             <div className="text-center md:text-left">
-                 <h1 className="text-3xl font-serif font-black text-slate-900 dark:text-white">{activeProfile.studentInfo.name}</h1>
-                 <div className="font-mono text-slate-500 dark:text-slate-400 mt-1">{activeProfile.studentInfo.registration}</div>
-             </div>
-             <div className="flex flex-wrap justify-center gap-3">
-                 <Button variant="secondary" onClick={() => alert("Coming soon!")}>
-                    <PlusCircle className="w-4 h-4 mr-2 text-brand-600"/> Forecast
-                 </Button>
-                 <Button variant="primary" onClick={handleDownloadPDF}>
-                    <Download className="w-4 h-4 mr-2"/> PDF
-                 </Button>
-                 <Button variant="outline" onClick={() => setActiveProfile(null)}>
-                    <RefreshCcw className="w-4 h-4 mr-2"/> New
-                 </Button>
-             </div>
+    <div className="pt-24 pb-28 px-4 max-w-7xl mx-auto space-y-6 md:space-y-10 animate-in fade-in duration-700">
+      
+      {/* PROFESSIONAL HEADER */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/5 blur-3xl pointer-events-none"></div>
+        <div className="flex items-center gap-4 md:gap-6 relative z-10">
+          <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-brand-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shrink-0 rotate-3">
+             <Sparkles size={28} />
+          </div>
+          <div className="min-w-0">
+              <h1 className="text-lg md:text-3xl font-black text-slate-900 dark:text-white truncate">
+                {activeProfile.studentInfo.name}
+              </h1>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="px-2 py-0.5 bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400 rounded-lg text-[10px] md:text-xs font-black font-mono tracking-wider">
+                  {activeProfile.studentInfo.registration}
+                </span>
+                <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:block">
+                  Verified Result
+                </span>
+              </div>
+          </div>
         </div>
 
-        {/* Tabs */}
-        {activeProfile.bedMode && (
-            <div className="flex justify-center">
-                <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex">
-                    <button onClick={() => setActiveTab('normal')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab==='normal'?'bg-white dark:bg-slate-700 shadow text-brand-600 dark:text-brand-400':'text-slate-500'}`}>BS / MSc</button>
-                    <button onClick={() => setActiveTab('bed')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab==='bed'?'bg-white dark:bg-slate-700 shadow text-brand-600 dark:text-brand-400':'text-slate-500'}`}>B.Ed</button>
-                </div>
-            </div>
-        )}
+        <div className="flex flex-wrap gap-2 w-full lg:w-auto relative z-10">
+            <Button variant="secondary" onClick={() => setShowChart(!showChart)} className="flex-1 lg:flex-none text-[11px] md:text-sm py-3 px-4 rounded-xl font-bold">
+                <LineChart className="w-4 h-4 mr-2" /> Trend
+            </Button>
+            <Button variant="secondary" onClick={handleExportPDF} className="flex-1 lg:flex-none text-[11px] md:text-sm py-3 px-4 rounded-xl font-bold">
+                <Download className="w-4 h-4 mr-2" /> Export PDF
+            </Button>
+            <Button variant="primary" onClick={() => setActiveProfile(null)} className="flex-1 lg:flex-none text-[11px] md:text-sm py-3 px-4 rounded-xl font-bold">
+                <RefreshCcw className="w-4 h-4 mr-2" /> New Search
+            </Button>
+        </div>
+      </div>
 
-        {/* Dashboard Grid */}
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
-            <div className="lg:col-span-4 sticky top-24 space-y-6">
-                <CgpaDial summary={summary} />
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
-                    <h3 className="font-serif font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-brand-500"/> Summary
-                    </h3>
-                    <div className="space-y-4 text-sm dark:text-slate-300">
-                        <div className="flex justify-between border-b dark:border-slate-700 pb-2">
-                            <span className="text-slate-500 dark:text-slate-400">Total Marks</span>
-                            <span className="font-mono font-bold">{summary.totalMarksObtained} / {summary.totalMaxMarks}</span>
-                        </div>
-                        <div className="flex justify-between border-b dark:border-slate-700 pb-2">
-                            <span className="text-slate-500 dark:text-slate-400">Quality Points</span>
-                            <span className="font-mono font-bold">{summary.totalQualityPoints.toFixed(0)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-slate-500 dark:text-slate-400">Credit Hours</span>
-                            <span className="font-mono font-bold">{summary.totalCreditHours}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+      <div className="grid lg:grid-cols-3 gap-6 md:gap-10">
+        {/* LEFT COLUMN: ANALYTICS */}
+        <div className="lg:col-span-1 space-y-6 md:space-y-8">
+            <CgpaDial summary={summary} />
             
-            <div className="lg:col-span-8">
-                <SemesterList 
-                    profile={{...activeProfile, semesters: displayProfile.semesters}} 
-                    onUpdate={(p) => {
-                        const merged = { ...activeProfile };
-                        Object.assign(merged.semesters, p.semesters);
-                        saveProfile(merged);
-                    }} 
-                />
+            {showChart && (
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 h-[320px] animate-in zoom-in-95">
+                    <div className="flex items-center justify-between mb-6 px-1">
+                        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Performance Over Time</h3>
+                        <TrendingUp size={14} className="text-slate-400" />
+                    </div>
+                    <ResponsiveContainer width="100%" height="80%">
+                        <RechartsLine data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.4} />
+                            <XAxis dataKey="name" hide />
+                            <YAxis domain={[0, 4]} axisLine={false} tickLine={false} fontSize={10} fontWeight="bold" />
+                            <Tooltip 
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', fontSize: '12px' }} 
+                              cursor={{ stroke: '#8b5cf6', strokeWidth: 1.5 }}
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="gpa" 
+                              stroke="#8b5cf6" 
+                              strokeWidth={4} 
+                              dot={{r:5, fill: '#8b5cf6', strokeWidth: 2, stroke: '#fff'}} 
+                              activeDot={{r:7}}
+                            />
+                        </RechartsLine>
+                    </ResponsiveContainer>
+                </div>
+            )}
+
+            <div className="p-6 md:p-8 bg-brand-600 rounded-[2rem] text-white shadow-xl relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-2xl rounded-full translate-x-10 -translate-y-10 group-hover:scale-125 transition-transform duration-700"></div>
+              <h3 className="font-black text-lg mb-2">Goal Simulation</h3>
+              <p className="text-white/70 text-xs leading-relaxed mb-6 font-medium">Add a virtual semester to analyze target marks and their impact on graduation standing.</p>
+              <Button onClick={handleAddForecast} variant="secondary" className="w-full py-3.5 rounded-xl justify-between bg-white/10 border-white/20 text-white hover:bg-white hover:text-brand-600 transition-all font-black text-xs md:text-sm">
+                  Add Forecast Semester
+                  <Plus className="w-5 h-5" />
+              </Button>
+            </div>
+
+            <div className="p-6 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800">
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 px-1">Workspace Utility</h3>
+                <div className="space-y-1">
+                   <ControlOption icon={<Settings2 size={16} />} label="Grade Settings" />
+                </div>
             </div>
         </div>
+
+        {/* RIGHT COLUMN: DETAILED DATA */}
+        <div className="lg:col-span-2">
+            <h2 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white mb-6 flex items-center gap-3 px-1">
+              Semester Log
+              <span className="text-[9px] font-bold bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full text-slate-500 uppercase tracking-widest">
+                {Object.keys(activeProfile.semesters).length} Terms Saved
+              </span>
+            </h2>
+            <SemesterList profile={activeProfile} onUpdate={saveProfile} />
+        </div>
+      </div>
     </div>
   );
 };
+
+const ControlOption = ({ icon, label }: { icon: React.ReactNode, label: string }) => (
+    <div className="flex items-center justify-between p-3.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer border border-transparent hover:border-slate-100 dark:hover:border-slate-700 transition-all group">
+        <div className="flex items-center gap-3">
+           <div className="text-slate-400 group-hover:text-brand-600 transition-colors">{icon}</div>
+           <span className="font-bold text-xs md:text-sm text-slate-700 dark:text-slate-200">{label}</span>
+        </div>
+        <ArrowLeft className="w-3.5 h-3.5 text-slate-300 rotate-180 group-hover:translate-x-1 transition-transform" />
+    </div>
+);
