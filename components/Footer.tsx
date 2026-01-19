@@ -142,4 +142,21 @@ export const Footer = () => {
               </span>
               Operational
             </span>
-            <span className="hover:text-brand-600 cursor-pointer transition-colors">v
+            <span className="hover:text-brand-600 cursor-pointer transition-colors">v2.1.0</span>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+};
+
+const SocialIcon = ({ href, icon }: { href: string; icon: React.ReactNode }) => (
+  <a 
+    href={href} 
+    target="_blank"
+    rel="noopener noreferrer"
+    className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-slate-500 hover:text-white hover:bg-brand-600 dark:hover:bg-brand-600 transition-all duration-300"
+  >
+    {icon}
+  </a>
+);
