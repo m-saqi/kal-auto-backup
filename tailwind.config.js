@@ -7,25 +7,29 @@ export default {
     "./components/**/*.{js,ts,jsx,tsx}",
     "./context/**/*.{js,ts,jsx,tsx}",
   ],
-  darkMode: 'class', // <--- CRITICAL FIX for Dark Mode
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        serif: ['Merriweather', 'serif'],
+        sans: ['Poppins', 'system-ui', 'sans-serif'],
       },
       colors: {
         brand: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
+          50: '#f5f3ff',
+          100: '#ede9fe',
+          200: '#ddd6fe',
+          300: '#c4b5fd',
+          400: '#a78bfa',
+          500: '#8b5cf6',
+          600: '#7c3aed',
+          700: '#6d28d9',
+          800: '#5b21b6',
+          900: '#4c1d95',
         }
       },
       animation: {
-        'fade-in': 'fadeIn 0.5s ease-in-out',
-        'slide-up': 'slideUp 0.5s ease-out',
+        'fade-in': 'fadeIn 0.7s ease-out forwards',
+        'slide-up': 'slideUp 0.7s ease-out forwards',
       },
       keyframes: {
         fadeIn: {
